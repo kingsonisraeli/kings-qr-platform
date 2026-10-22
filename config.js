@@ -1,6 +1,8 @@
 // ===== 1. PASTE YOUR SUPABASE DETAILS (Project Settings > API) =====
 const SUPABASE_URL = 'https://cawzmjinkedqsbmawrvm.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_wW9GPIMte9_HTG3Gw4cfww_Jrs61o_h';
+// Permanent site address (QR codes always use this, never a temporary Vercel address)
+const PUBLIC_BASE_URL = 'https://kingssonsdigitalsolutions.vercel.app/';
 const PLATFORM_NAME = "Kings & Son's QR Platform";
 // ===================================================================
 
@@ -40,9 +42,10 @@ function hrefFor(b, biz) {
 function renderCard(root, biz, opts = {}) {
   const accent = biz.accent || '#16a34a';
   const btns = (biz.buttons || []).filter(b => b.visible && (opts.preview || b.value));
+  const letter = esc((biz.name||'?').trim().charAt(0).toUpperCase());
   const logo = biz.logo_url
-    ? `<img src="${esc(biz.logo_url)}" alt="" style="border-color:${esc(accent)}">`
-    : `<div class="ph" style="border-color:${esc(accent)}">${esc((biz.name||'?').trim().charAt(0).toUpperCase())}</div>`;
+    ? `<img src="${esc(biz.logo_url)}" alt="" style="border-color:${esc(accent)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"><div class="ph" style="border-color:${esc(accent)};display:none">${letter}</div>`
+    : `<div class="ph" style="border-color:${esc(accent)}">${letter}</div>`;
   const list = biz.layout === 'list';
   root.innerHTML = `
     <div class="logo">${logo}</div>

@@ -78,7 +78,7 @@ code{background:#0b0d12;padding:6px 8px;border-radius:8px;display:block;word-bre
 <script>
 const $ = id => document.getElementById(id);
 let ROWS = [], EDIT = null, CUR = null, QR_URL = '';
-const base = () => location.href.replace(/[^/]*$/, '');
+const base = () => (typeof PUBLIC_BASE_URL === 'string' && PUBLIC_BASE_URL) ? PUBLIC_BASE_URL.replace(/\/?$/, '/') : location.href.replace(/[^/]*$/, '');
 const cardUrl = slug => `${base()}card.html?b=${encodeURIComponent(slug)}`;
 
 async function login() {
@@ -126,7 +126,7 @@ function openForm(id) {
 function closeForm() { $('fm').style.display = 'none'; }
 const DEF_LABEL={menu:'Digital Menu',website:'Website',reviews:'Google Reviews',payment:'Payment',instagram:'Instagram',facebook:'Facebook',whatsapp:'WhatsApp'};
 const looksLikeLink=t=>/^(https?:\/\/|www\.)/i.test(t)||/^\+?\d{8,}$/.test(t)||/^[\w.-]+@[\w.-]+$/.test(t);
-function fixSwapped(){CUR.forEach(b=>{if(!b.value&&looksLikeLink((b.label||'').trim())){b.value=b.label.trim();b.label=DEF_LABEL[b.key]||b.key;}});}
+function fixSwapped(){CUR.forEach(b=>{const l=(b.label||'').trim();if(looksLikeLink(l)||/^\S+\.\S+\/\S*$/.test(l)){if(!b.value)b.value=l;b.label=DEF_LABEL[b.key]||b.key;}});}
 function drawBtns() {
   fixSwapped();
   $('f_btns').innerHTML = CUR.map((b, i) => `
