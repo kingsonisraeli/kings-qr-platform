@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>My Card Layout</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0b0d12;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:980px;margin:0 auto;padding:20px 14px 60px}
+h2{margin:0 0 4px}.muted{color:#9aa3b2;font-size:14px}
+.box{background:#141821;border:1px solid #232a37;border-radius:16px;padding:16px;margin-top:14px}
+input{width:100%;padding:12px;border-radius:10px;border:1px solid #2b3342;background:#0b0d12;color:#fff;font-size:16px;margin-top:8px}
+button{cursor:pointer;border:0;border-radius:10px;padding:11px 16px;font-size:15px;font-weight:600;background:#22c55e;color:#04210f}
+button.ghost{background:#232a37;color:#fff}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:760px){.cols{grid-template-columns:1fr}}
+.row{display:flex;align-items:center;gap:8px;background:#0b0d12;border:1px solid #232a37;border-radius:12px;padding:8px;margin-top:8px}
+.row.off{opacity:.5}.row input{margin:0;padding:8px;flex:1;min-width:0}
+.row .ic{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex:none}
+.row .ar{background:#232a37;color:#fff;padding:6px 10px;font-size:14px}
+.seg{display:flex;gap:8px;margin-top:10px}.seg button{flex:1;background:#232a37;color:#fff}.seg button.on{background:#22c55e;color:#04210f}
+.sw{width:44px;height:26px;border-radius:99px;background:#3a4252;position:relative;flex:none;padding:0}
+.sw::after{content:'';position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.15s}
+.sw.on{background:#22c55e}.sw.on::after{left:21px}
+.prev{background:#0b0d12;border:1px solid #232a37;border-radius:20px}
+#msg{margin-top:10px;font-size:14px}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<style id="cs"></style>
+</head><body>
+<div class="wrap">
+  <div id="login" class="box" style="max-width:420px;margin:60px auto">
+    <h2>Arrange my card</h2><p class="muted">Enter the business code and PIN given by Kings &amp; Son's.</p>
+    <input id="slug" placeholder="Business code (e.g. fork-and-spoon)" autocapitalize="off">
+    <input id="pin" type="password" inputmode="numeric" placeholder="PIN">
+    <p><button onclick="login()" style="width:100%">Login</button></p><div id="err" style="color:#f87171"></div>
+  </div>
+
+  <div id="app" style="display:none">
+    <h2 id="bn"></h2><div class="muted">Choose which buttons show, their order, names and the layout. Links &amp; payment details are managed by Kings &amp; Son's.</div>
+    <div class="cols">
+      <div class="box">
+        <b>Layout</b>
+        <div class="seg"><button id="lg" onclick="setLayout('grid')">Grid</button><button id="ll" onclick="setLayout('list')">List</button></div>
+        <div style="margin-top:14px"><b>Buttons</b></div>
+        <div id="rows"></div>
+        <p><button onclick="save()">Save layout</button> <span id="msg"></span></p>
+      </div>
+      <div><div class="muted" style="margin:14px 0 6px">Live preview</div><div class="prev"><div class="card" id="pv"></div></div></div>
+    </div>
+  </div>
+</div>
+<p style="text-align:center;color:#9aa3b2;font-size:14px;padding-bottom:24px">Powered by Kings &amp; Son's Digital Solutions</p>
+<script>
+document.getElementById('cs').textContent = CARD_CSS;
+let S = { slug:'', pin:'', biz:null };
+const $ = id => document.getElementById(id);
+
+async function login() {
+  const slug = $('slug').value.trim().toLowerCase(), pin = $('pin').value.trim();
+  $('err').textContent = '';
+  const { data, error } = await sb.rpc('client_login', { p_slug: slug, p_pin: pin });
+  if (error || !data) { $('err').textContent = 'Wrong code or PIN.'; return; }
+  S = { slug, pin, biz: data };
+  $('login').style.display = 'none'; $('app').style.display = 'block';
+  $('bn').textContent = data.name; draw();
+}
+function draw() {
+  const b = S.biz;
+  $('lg').className = b.layout === 'grid' ? 'on' : ''; $('ll').className = b.layout === 'list' ? 'on' : '';
+  $('rows').innerHTML = b.buttons.map((x, i) => `
+    <div class="row ${x.visible ? '' : 'off'}">
+      <span class="ic" style="background:${BTN_META[x.key].color}">${svg(x.key, 20)}</span>
+      <input value="${esc(x.label)}" maxlength="30" onchange="S.biz.buttons[${i}].label=this.value;pv()">
+      <button class="ar" onclick="mv(${i},-1)">↑</button><button class="ar" onclick="mv(${i},1)">↓</button>
+      <button class="sw ${x.visible ? 'on' : ''}" title="Show / hide" onclick="S.biz.buttons[${i}].visible=!S.biz.buttons[${i}].visible;draw()"></button>
+    </div>`).join('');
+  pv();
+}
+function pv() { renderCard($('pv'), S.biz, { preview: true }); }
+function mv(i, d) { const a = S.biz.buttons, j = i + d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; draw(); }
+function setLayout(l) { S.biz.layout = l; draw(); }
+async function save() {
+  $('msg').textContent = 'Saving…';
+  const { data, error } = await sb.rpc('client_save', { p_slug: S.slug, p_pin: S.pin, p_layout: S.biz.layout, p_order: S.biz.buttons });
+  if (error) { $('msg').textContent = 'Could not save: ' + error.message; return; }
+  S.biz = data; draw(); $('msg').textContent = '✓ Saved — live on your QR / NFC card now';
+}
+</script>
+</body></html>
