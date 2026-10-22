@@ -22,6 +22,7 @@ document.getElementById('cs').textContent = CARD_CSS;
   const { data, error } = await sb.rpc('get_card', { p_slug: slug });
   if (error || !data) { root.innerHTML = '<p style="color:#9aa3b2">This card is not available.</p>'; return; }
   document.title = data.name;
+  if (q.get('debug')) { const d = document.createElement('pre'); d.style.cssText='color:#9aa3b2;font-size:12px;white-space:pre-wrap;padding:12px;max-width:460px;margin:0 auto'; d.textContent = (data.buttons||[]).map(b => b.key + ' | visible=' + b.visible + ' | value=' + (b.value ? 'YES: ' + String(b.value).slice(0,40) : 'EMPTY') + ' | label=' + b.label).join('\n'); document.body.appendChild(d); }
   renderCard(root, data);
 })();
 </script>
