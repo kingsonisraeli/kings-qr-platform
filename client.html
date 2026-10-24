@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>My Card Layout</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#0b0d12;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
@@ -30,9 +32,9 @@ button.ghost{background:#232a37;color:#fff}
 <div class="wrap">
   <div id="login" class="box" style="max-width:420px;margin:60px auto">
     <h2>Arrange my card</h2><p class="muted">Enter the business code and PIN given by Kings &amp; Son's.</p>
-    <input id="slug" placeholder="Business code (e.g. fork-and-spoon)" autocapitalize="off">
-    <input id="pin" type="password" inputmode="numeric" placeholder="PIN">
-    <p><button onclick="login()" style="width:100%">Login</button></p><div id="err" style="color:#f87171"></div>
+    <input id="slug" placeholder="Business code (e.g. fork-and-spoon)" autocapitalize="off" autocomplete="off">
+    <input id="pin" type="password" inputmode="numeric" maxlength="12" placeholder="PIN" autocomplete="off">
+    <p><button id="lb" onclick="login()" style="width:100%">Login</button></p><div id="err" style="color:#f87171"></div>
   </div>
 
   <div id="app" style="display:none">
@@ -43,7 +45,7 @@ button.ghost{background:#232a37;color:#fff}
         <div class="seg"><button id="lg" onclick="setLayout('grid')">Grid</button><button id="ll" onclick="setLayout('list')">List</button></div>
         <div style="margin-top:14px"><b>Buttons</b></div>
         <div id="rows"></div>
-        <p><button onclick="save()">Save layout</button> <span id="msg"></span></p>
+        <p><button id="sb" onclick="save()">Save layout</button> <span id="msg"></span></p>
       </div>
       <div><div class="muted" style="margin:14px 0 6px">Live preview</div><div class="prev"><div class="card" id="pv"></div></div></div>
     </div>
@@ -54,35 +56,46 @@ button.ghost{background:#232a37;color:#fff}
 document.getElementById('cs').textContent = CARD_CSS;
 let S = { slug:'', pin:'', biz:null };
 const $ = id => document.getElementById(id);
+const meta = k => (typeof BTN_META !== 'undefined' && BTN_META[k]) || { color:'#475569' };
 
 async function login() {
   const slug = $('slug').value.trim().toLowerCase(), pin = $('pin').value.trim();
   $('err').textContent = '';
+  if (!slug || !pin) { $('err').textContent = 'Enter your business code and PIN.'; return; }
+  $('lb').disabled = true;
   const { data, error } = await sb.rpc('client_login', { p_slug: slug, p_pin: pin });
-  if (error || !data) { $('err').textContent = 'Wrong code or PIN.'; return; }
+  $('lb').disabled = false;
+  if (error || !data) { $('err').textContent = 'Wrong code or PIN. After 5 wrong tries, login is locked for 15 minutes.'; return; }
   S = { slug, pin, biz: data };
+  $('pin').value = '';
   $('login').style.display = 'none'; $('app').style.display = 'block';
   $('bn').textContent = data.name; draw();
 }
 function draw() {
   const b = S.biz;
   $('lg').className = b.layout === 'grid' ? 'on' : ''; $('ll').className = b.layout === 'list' ? 'on' : '';
+  // Button names are put into the inputs with .value (never into HTML) so nothing typed can run as code
   $('rows').innerHTML = b.buttons.map((x, i) => `
     <div class="row ${x.visible ? '' : 'off'}">
-      <span class="ic" style="background:${BTN_META[x.key].color}">${svg(x.key, 20)}</span>
-      <input value="${esc(x.label)}" maxlength="30" onchange="S.biz.buttons[${i}].label=this.value;pv()">
+      <span class="ic" style="background:${meta(x.key).color}">${svg(x.key, 20)}</span>
+      <input maxlength="30" oninput="S.biz.buttons[${i}].label=this.value;pv()">
       <button class="ar" onclick="mv(${i},-1)">↑</button><button class="ar" onclick="mv(${i},1)">↓</button>
       <button class="sw ${x.visible ? 'on' : ''}" title="Show / hide" onclick="S.biz.buttons[${i}].visible=!S.biz.buttons[${i}].visible;draw()"></button>
     </div>`).join('');
+  $('rows').querySelectorAll('input').forEach((el, i) => { el.value = b.buttons[i].label || ''; });
   pv();
 }
 function pv() { renderCard($('pv'), S.biz, { preview: true }); }
 function mv(i, d) { const a = S.biz.buttons, j = i + d; if (j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; draw(); }
 function setLayout(l) { S.biz.layout = l; draw(); }
 async function save() {
-  $('msg').textContent = 'Saving…';
+  $('msg').textContent = 'Saving…'; $('sb').disabled = true;
   const { data, error } = await sb.rpc('client_save', { p_slug: S.slug, p_pin: S.pin, p_layout: S.biz.layout, p_order: S.biz.buttons });
-  if (error) { $('msg').textContent = 'Could not save: ' + error.message; return; }
+  $('sb').disabled = false;
+  if (error || !data) {
+    $('msg').textContent = 'Could not save. Check your connection and try again. (If this keeps happening, wait 15 minutes and log in again.)';
+    return;
+  }
   S.biz = data; draw(); $('msg').textContent = '✓ Saved — live on your QR / NFC card now';
 }
 </script>

@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>Admin — QR + NFC Platform</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#0b0d12;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
@@ -34,7 +36,7 @@ code{background:#0b0d12;padding:6px 8px;border-radius:8px;display:block;word-bre
 
 <div id="login" class="box" style="max-width:400px;margin:70px auto">
   <h2>Admin login</h2><p class="muted">Kings &amp; Son's — central control panel</p>
-  <input id="em" type="email" placeholder="Admin email"><input id="pw" type="password" placeholder="Password">
+  <input id="em" type="email" placeholder="Admin email" autocomplete="username"><input id="pw" type="password" placeholder="Password" autocomplete="current-password">
   <p><button onclick="login()" style="width:100%">Login</button></p><div id="lerr" style="color:#f87171"></div>
 </div>
 
@@ -52,12 +54,12 @@ code{background:#0b0d12;padding:6px 8px;border-radius:8px;display:block;word-bre
 <div class="modal" id="fm"><div class="box">
   <div class="top"><h2 id="ft">Add client</h2><button class="ghost" onclick="closeForm()">✕</button></div>
   <div class="g2">
-    <div><label>Business name *</label><input id="f_name" oninput="autoSlug()"></div>
-    <div><label>Business code (used in QR link) *</label><input id="f_slug" autocapitalize="off"></div>
-    <div><label>Tagline</label><input id="f_tag"></div>
-    <div><label>Logo image URL</label><input id="f_logo" placeholder="https://…"></div>
+    <div><label>Business name *</label><input id="f_name" maxlength="80" oninput="autoSlug()"></div>
+    <div><label>Business code (used in QR link) *</label><input id="f_slug" maxlength="60" autocapitalize="off"></div>
+    <div><label>Tagline</label><input id="f_tag" maxlength="140"></div>
+    <div><label>Logo image URL</label><input id="f_logo" maxlength="500" placeholder="https://…"></div>
     <div><label>Accent colour</label><input id="f_acc" type="color" style="height:44px;padding:3px"></div>
-    <div><label>Client PIN (leave blank to keep)</label><input id="f_pin" inputmode="numeric" placeholder="e.g. 482915"></div>
+    <div><label>Client PIN (leave blank to keep)</label><input id="f_pin" inputmode="numeric" maxlength="12" placeholder="6 digits or more" autocomplete="off"></div>
     <div><label>Layout</label><select id="f_lay"><option value="grid">Grid</option><option value="list">List</option></select></div>
     <div><label>Status</label><select id="f_act"><option value="true">Active</option><option value="false">Disabled</option></select></div>
   </div>
@@ -81,13 +83,33 @@ let ROWS = [], EDIT = null, CUR = null, QR_URL = '';
 const base = () => (typeof PUBLIC_BASE_URL === 'string' && PUBLIC_BASE_URL) ? PUBLIC_BASE_URL.replace(/\/?$/, '/') : location.href.replace(/[^/]*$/, '');
 const cardUrl = slug => `${base()}card.html?b=${encodeURIComponent(slug)}`;
 
+/* ---------- security helpers ---------- */
+const OK_SCHEMES = ['http', 'https', 'tel', 'mailto', 'upi', 'whatsapp', 'sms'];
+// true if the value is a dangerous link (javascript:, data:, vbscript: ... any scheme not in the allow-list)
+function badLink(v) {
+  v = String(v || '').trim();
+  if (!v) return false;
+  const s = v.replace(/[\u0000-\u0020\u007f-\u009f]/g, '');   // browsers ignore tabs/newlines inside "java\nscript:"
+  if (/[<>"`]/.test(s)) return true;
+  const m = s.match(/^([a-z][a-z0-9+.\-]*):/i);
+  if (m && !m[1].includes('.') && !OK_SCHEMES.includes(m[1].toLowerCase())) return true;
+  return false;
+}
+const badLogo = v => !!v && !/^https:\/\/[^\s<>"`]+$/i.test(v);
+
 async function login() {
+  $('lerr').textContent = '';
   const { error } = await sb.auth.signInWithPassword({ email: $('em').value.trim(), password: $('pw').value });
-  if (error) { $('lerr').textContent = error.message; return; } init();
+  if (error) { $('lerr').textContent = error.message; return; }
+  $('pw').value = '';
+  init();
 }
 async function logout() { await sb.auth.signOut(); location.reload(); }
 async function init() {
   const { data: { session } } = await sb.auth.getSession(); if (!session) return;
+  // If this account is not an admin, sign it out (database rules block it anyway)
+  const chk = await sb.rpc('is_admin');
+  if (chk && chk.data === false) { await sb.auth.signOut(); $('lerr').textContent = 'This account is not an admin.'; return; }
   $('login').style.display = 'none'; $('app').style.display = 'block';
   $('clientlink').textContent = base() + 'client.html'; load();
 }
@@ -100,9 +122,9 @@ function drawList() {
   $('s1').textContent = ROWS.length; $('s2').textContent = ROWS.filter(r => r.active).length; $('s3').textContent = ROWS.reduce((a, r) => a + (r.scans || 0), 0);
   $('list').innerHTML = ROWS.filter(r => (r.name + r.slug).toLowerCase().includes(q)).map(r => `
     <div class="box biz"><div class="info"><b>${esc(r.name)}</b> <span class="pill ${r.active ? 'on' : ''}">${r.active ? 'Active' : 'Disabled'}</span>
-      <div class="muted">/${esc(r.slug)} · ${esc(r.layout)} · ${r.scans} scans</div></div>
-      <div class="acts"><button onclick="showQR('${r.id}')">QR / NFC</button><button class="ghost" onclick="openForm('${r.id}')">Edit</button>
-      <button class="ghost" onclick="window.open(cardUrl('${esc(r.slug)}'))">Open</button><button class="red" onclick="del('${r.id}')">Delete</button></div></div>`).join('')
+      <div class="muted">/${esc(r.slug)} · ${esc(r.layout)} · ${Number(r.scans) || 0} scans</div></div>
+      <div class="acts"><button onclick="showQR('${esc(r.id)}')">QR / NFC</button><button class="ghost" onclick="openForm('${esc(r.id)}')">Edit</button>
+      <button class="ghost" onclick="window.open(cardUrl('${esc(r.slug)}'))">Open</button><button class="red" onclick="del('${esc(r.id)}')">Delete</button></div></div>`).join('')
     || '<p class="muted">No clients yet. Tap “Add client business”.</p>';
 }
 function autoSlug() { if (EDIT) return; $('f_slug').value = $('f_name').value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
@@ -132,19 +154,24 @@ function drawBtns() {
   $('f_btns').innerHTML = CUR.map((b, i) => `
     <div class="row ${b.visible ? '' : 'off'}">
       <span class="ic" style="background:${BTN_META[b.key].color}">${svg(b.key, 18)}</span>
-      <input class="lbl" value="${esc(b.label)}" placeholder="Button name" oninput="CUR[${i}].label=this.value">
+      <input class="lbl" value="${esc(b.label)}" maxlength="30" placeholder="Button name" oninput="CUR[${i}].label=this.value">
       <button class="ar" onclick="mv(${i},-1)">↑</button><button class="ar" onclick="mv(${i},1)">↓</button>
       <button class="ar" onclick="CUR[${i}].visible=!CUR[${i}].visible;drawBtns()">${b.visible ? '👁' : '🚫'}</button>
       <div class="cap">Link / number for ${esc(DEF_LABEL[b.key])}</div>
-      <input class="val" value="${esc(b.value)}" placeholder="${esc(BTN_HINT[b.key])}" oninput="CUR[${i}].value=this.value"></div>`).join('');
+      <input class="val" value="${esc(b.value)}" maxlength="500" placeholder="${esc(BTN_HINT[b.key])}" oninput="CUR[${i}].value=this.value"></div>`).join('');
 }
 function mv(i, d) { const j = i + d; if (j < 0 || j >= CUR.length) return; [CUR[i], CUR[j]] = [CUR[j], CUR[i]]; drawBtns(); }
 
 async function saveForm() {
   const name = $('f_name').value.trim(), slug = $('f_slug').value.trim().toLowerCase(), pin = $('f_pin').value.trim();
+  const logo = $('f_logo').value.trim();
   if (!name || !/^[a-z0-9-]+$/.test(slug)) { $('fmsg').textContent = 'Enter name and a valid code (letters, numbers, -).'; return; }
   if (!EDIT && !pin) { $('fmsg').textContent = 'Set a client PIN for the new client.'; return; }
-  const row = { name, slug, tagline: $('f_tag').value.trim(), logo_url: $('f_logo').value.trim() || null, accent: $('f_acc').value,
+  if (pin && !/^\d{6,12}$/.test(pin)) { $('fmsg').textContent = 'PIN must be 6 to 12 digits.'; return; }
+  if (badLogo(logo)) { $('fmsg').textContent = 'Logo URL must start with https://'; return; }
+  const bad = CUR.find(b => badLink(b.value));
+  if (bad) { $('fmsg').textContent = 'Unsafe link in "' + (DEF_LABEL[bad.key] || bad.key) + '". Use https://, tel:, mailto: or a plain number.'; return; }
+  const row = { name, slug, tagline: $('f_tag').value.trim(), logo_url: logo || null, accent: $('f_acc').value,
     layout: $('f_lay').value, active: $('f_act').value === 'true', buttons: CUR };
   $('fmsg').textContent = 'Saving…';
   let id = EDIT?.id, res;
